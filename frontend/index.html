@@ -1,0 +1,656 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Log Viewer</title>
+    <link rel="stylesheet" href="index.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  </head>
+
+  <body>
+    <div class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Federated Learning Control Center</p>
+          <h1>Quản lý server, client và theo dõi kết quả huấn luyện</h1>
+          <p>
+            Giao diện được tổ chức theo từng nhóm chức năng, giúp bạn điều khiển
+            luồng training rõ ràng và quan sát log, biểu đồ, session một cách
+            trực quan.
+          </p>
+        </div>
+        <div class="hero-badges">
+          <span>Live monitoring</span>
+          <span>Session comparison</span>
+          <span>Submission tracker</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <h2>Điều khiển huấn luyện</h2>
+            <p>
+              Khởi động server và client, đồng thời thiết lập tham số training.
+            </p>
+          </div>
+        </div>
+        <div class="button-row">
+          <button onclick="startServer()">Start Server</button>
+          <button onclick="stopServer()">Stop Server</button>
+        </div>
+        <div class="control-grid">
+          <div class="field">
+            <label for="num_round">Num Round</label>
+            <input id="num_round" type="number" value="100" min="1" />
+          </div>
+          <div class="field">
+            <label for="local">Local Epochs</label>
+            <input id="local" type="number" value="1" min="1" />
+          </div>
+          <div class="field">
+            <label for="lr">Learning rate</label>
+            <input id="lr" type="number" value="0.01" min="0" step="any" />
+          </div>
+          <div class="field">
+            <label for="seed">Random seed</label>
+            <input id="seed" type="number" value="42" min="1" />
+          </div>
+        </div>
+        <div class="button-row" style="margin-top: 14px">
+          <button onclick="startClient(1)">Start Client 1</button>
+          <button onclick="startClient(2)">Start Client 2</button>
+          <button onclick="startClient(3)">Start Client 3</button>
+          <button onclick="startClient(4)">Start Client 4</button>
+        </div>
+        <div class="button-row">
+          <button onclick="stopClient(1)">Stop Client 1</button>
+          <button onclick="stopClient(2)">Stop Client 2</button>
+          <button onclick="stopClient(3)">Stop Client 3</button>
+          <button onclick="stopClient(4)">Stop Client 4</button>
+        </div>
+        <div class="button-row">
+          <button onclick="connectToWsClient(1)">View Client 1</button>
+          <button onclick="connectToWsClient(2)">View Client 2</button>
+          <button onclick="connectToWsClient(3)">View Client 3</button>
+          <button onclick="connectToWsClient(4)">View Client 4</button>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="section-heading">
+          <div>
+            <h2>Server Log</h2>
+            <p>Hiển thị toàn bộ log từ server trong một khung riêng biệt.</p>
+          </div>
+        </div>
+        <div class="server-log-card">
+          <div class="screen" id="server-log"></div>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="section-heading">
+          <div>
+            <h2>Client Log</h2>
+            <p>Theo dõi log của từng client một cách rõ ràng và gọn hơn.</p>
+          </div>
+        </div>
+        <div class="client-log-grid">
+          <div class="screen-card compact-card">
+            <h3>Client 1</h3>
+            <div class="screen compact-screen" id="client-log-1"></div>
+          </div>
+          <div class="screen-card compact-card">
+            <h3>Client 2</h3>
+            <div class="screen compact-screen" id="client-log-2"></div>
+          </div>
+          <div class="screen-card compact-card">
+            <h3>Client 3</h3>
+            <div class="screen compact-screen" id="client-log-3"></div>
+          </div>
+          <div class="screen-card compact-card">
+            <h3>Client 4</h3>
+            <div class="screen compact-screen" id="client-log-4"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <h2>Biểu đồ accuracy theo client</h2>
+            <p>Quan sát tiến trình tăng trưởng độ chính xác qua từng round.</p>
+          </div>
+        </div>
+        <div class="chart-grid">
+          <div class="chart-container"><canvas id="lossChart-1"></canvas></div>
+          <div class="chart-container"><canvas id="lossChart-2"></canvas></div>
+          <div class="chart-container"><canvas id="lossChart-3"></canvas></div>
+          <div class="chart-container"><canvas id="lossChart-4"></canvas></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <h2>So sánh session</h2>
+            <p>Khám phá kết quả train giữa các session khác nhau.</p>
+          </div>
+        </div>
+
+        <div class="compare-group">
+          <h1>Session A</h1>
+          <div class="button-row">
+            <button id="find1">Find</button>
+            <button id="active1">Active</button>
+            <select
+              class="field"
+              style="min-width: 180px"
+              id="select1"
+            ></select>
+          </div>
+          <div class="control-grid">
+            <div class="field">
+              <label for="num_round1">Num Round</label>
+              <input id="num_round1" type="number" />
+            </div>
+            <div class="field">
+              <label for="local1">Local Epochs</label>
+              <input id="local1" type="number" />
+            </div>
+            <div class="field">
+              <label for="lr1">Learning rate</label>
+              <input id="lr1" type="number" step="any" />
+            </div>
+            <div class="field">
+              <label for="seed1">Random seed</label>
+              <input id="seed1" type="number" />
+            </div>
+          </div>
+          <div class="chart-grid-compare">
+            <div class="chart-container"><canvas id="cp1"></canvas></div>
+            <div class="chart-container"><canvas id="cp2"></canvas></div>
+            <div class="chart-container"><canvas id="cp3"></canvas></div>
+            <div class="chart-container"><canvas id="cp4"></canvas></div>
+          </div>
+        </div>
+
+        <div class="compare-group">
+          <h1>Session B</h1>
+          <div class="button-row">
+            <button id="find2">Find</button>
+            <button id="active2">Active</button>
+            <select
+              class="field"
+              style="min-width: 180px"
+              id="select2"
+            ></select>
+          </div>
+          <div class="control-grid">
+            <div class="field">
+              <label for="num_round2">Num Round</label>
+              <input id="num_round2" type="number" />
+            </div>
+            <div class="field">
+              <label for="local2">Local Epochs</label>
+              <input id="local2" type="number" />
+            </div>
+            <div class="field">
+              <label for="lr2">Learning rate</label>
+              <input id="lr2" type="number" />
+            </div>
+            <div class="field">
+              <label for="seed2">Random seed</label>
+              <input id="seed2" type="number" />
+            </div>
+          </div>
+          <div class="chart-grid-compare-2">
+            <div class="chart-container"><canvas id="cp5"></canvas></div>
+            <div class="chart-container"><canvas id="cp6"></canvas></div>
+            <div class="chart-container"><canvas id="cp7"></canvas></div>
+            <div class="chart-container"><canvas id="cp8"></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <h2>Submission Count</h2>
+            <p>
+              Đếm số lần submit của từng client và theo dõi tiến độ mục tiêu.
+            </p>
+          </div>
+        </div>
+        <div class="submission-grid">
+          <div
+            id="card-1"
+            class="panel"
+            style="
+              flex: 1 1 220px;
+              min-width: 220px;
+              padding: 18px;
+              display: flex;
+              flex-direction: column;
+              gap: 12px;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+            >
+              <div style="font-weight: 600; font-size: 15px; color: #0f172a">
+                Client 1
+              </div>
+              <div
+                style="
+                  font-size: 12px;
+                  color: #475569;
+                  border: 1px solid #e6eef8;
+                  padding: 4px 8px;
+                  border-radius: 8px;
+                  background: #f1f8ff;
+                "
+              >
+                ID: 1
+              </div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 10px">
+              <div
+                id="count-1"
+                style="font-size: 42px; font-weight: 700; color: #0b5fff"
+              >
+                0
+              </div>
+              <div style="font-size: 13px; color: #64748b">submissions</div>
+            </div>
+            <div style="font-size: 12px; color: #475569">
+              Progress to goal (20)
+            </div>
+            <div
+              style="
+                width: 100%;
+                background: #eef2ff;
+                height: 10px;
+                border-radius: 999px;
+                overflow: hidden;
+              "
+            >
+              <div
+                id="bar-1"
+                style="
+                  width: 0%;
+                  height: 100%;
+                  background: linear-gradient(90deg, #60a5fa, #2563eb);
+                "
+              ></div>
+            </div>
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12px;
+                color: #64748b;
+              "
+            >
+              <div>Last submit: <span id="last-1">—</span></div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 6px">
+              <button
+                onclick="countSubmit(1)"
+                style="
+                  flex: 1;
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  border: 0;
+                  background: #0b5fff;
+                  color: #fff;
+                  cursor: pointer;
+                "
+              >
+                + Count
+              </button>
+              <button
+                style="
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  border: 1px solid #e2e8f0;
+                  background: #fff;
+                  color: #0b172a;
+                  cursor: pointer;
+                "
+              >
+                -
+              </button>
+            </div>
+          </div>
+
+          <div
+            id="card-2"
+            class="panel"
+            style="
+              flex: 1 1 220px;
+              min-width: 220px;
+              padding: 18px;
+              display: flex;
+              flex-direction: column;
+              gap: 12px;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+            >
+              <div style="font-weight: 600; font-size: 15px; color: #0f172a">
+                Client 2
+              </div>
+              <div
+                style="
+                  font-size: 12px;
+                  color: #475569;
+                  border: 1px solid #fde8e8;
+                  padding: 4px 8px;
+                  border-radius: 8px;
+                  background: #fff7f7;
+                  color: #dc2626;
+                "
+              >
+                ID: 2
+              </div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 10px">
+              <div
+                id="count-2"
+                style="font-size: 42px; font-weight: 700; color: #0b5fff"
+              >
+                0
+              </div>
+              <div style="font-size: 13px; color: #64748b">submissions</div>
+            </div>
+            <div style="font-size: 12px; color: #475569">
+              Progress to goal (20)
+            </div>
+            <div
+              style="
+                width: 100%;
+                background: #f1f5f9;
+                height: 10px;
+                border-radius: 999px;
+                overflow: hidden;
+              "
+            >
+              <div
+                id="bar-2"
+                style="
+                  width: 0%;
+                  height: 100%;
+                  background: linear-gradient(90deg, #34d399, #059669);
+                "
+              ></div>
+            </div>
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12px;
+                color: #64748b;
+              "
+            >
+              <div>Last submit: <span id="last-2">—</span></div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 6px">
+              <button
+                onclick="countSubmit(2)"
+                style="
+                  flex: 1;
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  border: 0;
+                  background: #16a34a;
+                  color: #fff;
+                  cursor: pointer;
+                "
+              >
+                + Count
+              </button>
+              <button
+                style="
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  border: 1px solid #e2e8f0;
+                  background: #fff;
+                  color: #0b172a;
+                  cursor: pointer;
+                "
+              >
+                -
+              </button>
+            </div>
+          </div>
+
+          <div
+            id="card-3"
+            class="panel"
+            style="
+              flex: 1 1 220px;
+              min-width: 220px;
+              padding: 18px;
+              display: flex;
+              flex-direction: column;
+              gap: 12px;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+            >
+              <div style="font-weight: 600; font-size: 15px; color: #0f172a">
+                Client 3
+              </div>
+              <div
+                style="
+                  font-size: 12px;
+                  color: #475569;
+                  border: 1px solid #e6f7ef;
+                  padding: 4px 8px;
+                  border-radius: 8px;
+                  background: #f0fdf4;
+                  color: #15803d;
+                "
+              >
+                ID: 3
+              </div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 10px">
+              <div
+                id="count-3"
+                style="font-size: 42px; font-weight: 700; color: #0b5fff"
+              >
+                0
+              </div>
+              <div style="font-size: 13px; color: #64748b">submissions</div>
+            </div>
+            <div style="font-size: 12px; color: #475569">
+              Progress to goal (20)
+            </div>
+            <div
+              style="
+                width: 100%;
+                background: #fff1f2;
+                height: 10px;
+                border-radius: 999px;
+                overflow: hidden;
+              "
+            >
+              <div
+                id="bar-3"
+                style="
+                  width: 0%;
+                  height: 100%;
+                  background: linear-gradient(90deg, #fb923c, #ef4444);
+                "
+              ></div>
+            </div>
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12px;
+                color: #64748b;
+              "
+            >
+              <div>Last submit: <span id="last-3">—</span></div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 6px">
+              <button
+                onclick="countSubmit(3)"
+                style="
+                  flex: 1;
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  border: 0;
+                  background: #fb923c;
+                  color: #fff;
+                  cursor: pointer;
+                "
+              >
+                + Count
+              </button>
+              <button
+                style="
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  border: 1px solid #e2e8f0;
+                  background: #fff;
+                  color: #0b172a;
+                  cursor: pointer;
+                "
+              >
+                -
+              </button>
+            </div>
+          </div>
+
+          <div
+            id="card-4"
+            class="panel"
+            style="
+              flex: 1 1 220px;
+              min-width: 220px;
+              padding: 18px;
+              display: flex;
+              flex-direction: column;
+              gap: 12px;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              "
+            >
+              <div style="font-weight: 600; font-size: 15px; color: #0f172a">
+                Client 4
+              </div>
+              <div
+                style="
+                  font-size: 12px;
+                  color: #475569;
+                  border: 1px solid #e6eef8;
+                  padding: 4px 8px;
+                  border-radius: 8px;
+                  background: #f1f8ff;
+                "
+              >
+                ID: 4
+              </div>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 10px">
+              <div
+                id="count-4"
+                style="font-size: 42px; font-weight: 700; color: #0b5fff"
+              >
+                0
+              </div>
+              <div style="font-size: 13px; color: #64748b">submissions</div>
+            </div>
+            <div style="font-size: 12px; color: #475569">
+              Progress to goal (20)
+            </div>
+            <div
+              style="
+                width: 100%;
+                background: #eef2ff;
+                height: 10px;
+                border-radius: 999px;
+                overflow: hidden;
+              "
+            >
+              <div
+                id="bar-4"
+                style="
+                  width: 0%;
+                  height: 100%;
+                  background: linear-gradient(90deg, #60a5fa, #2563eb);
+                "
+              ></div>
+            </div>
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12px;
+                color: #64748b;
+              "
+            >
+              <div>Last submit: <span id="last-4">—</span></div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 6px">
+              <button
+                onclick="countSubmit(4)"
+                style="
+                  flex: 1;
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  border: 0;
+                  background: #0b5fff;
+                  color: #fff;
+                  cursor: pointer;
+                "
+              >
+                + Count
+              </button>
+              <button
+                style="
+                  padding: 8px 10px;
+                  border-radius: 8px;
+                  border: 1px solid #e2e8f0;
+                  background: #fff;
+                  color: #0b172a;
+                  cursor: pointer;
+                "
+              >
+                -
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script src="./index.js"></script>
+  </body>
+</html>
