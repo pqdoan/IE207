@@ -24,8 +24,9 @@ class SaveModelStrategy(FedAvg):
                     k: torch.tensor(ndarrays[i]) for i, k in enumerate(keys)
                 }
                 self.model.load_state_dict(new_state_dict)
-                os.makedirs("C:/trained_models", exist_ok=True)
-                torch.save(self.model.state_dict(), f"C:/trained_models/final_model_{int(time.time())}.pth")
+                save_dir = os.getenv("MODEL_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "trained_models"))
+                os.makedirs(save_dir, exist_ok=True)
+                torch.save(self.model.state_dict(), os.path.join(save_dir, f"final_model_{int(time.time())}.pth"))
 
         return aggregated, metrics
 

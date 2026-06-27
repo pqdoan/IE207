@@ -1,138 +1,238 @@
-# Federated Learning Demo
+# Federated Learning - Phát hiện mã độc
 
 ## 1. Giới thiệu đề tài
 
-Dự án này triển khai một mô hình demo về Federated Learning (học tập phân tán) với các client riêng biệt, trong đó mỗi client huấn luyện một mô hình trên dữ liệu cục bộ của mình rồi gửi các cập nhật về server để tổng hợp thành một mô hình chung.
+Dự án triển khai **Federated Learning** (học liên kết) bằng **Flower framework** để **phát hiện/phân loại mã độc** dựa trên ảnh byteplot của các họ malware (bộ dữ liệu kiểu Malimg). Mỗi client huấn luyện một mô hình CNN trên dữ liệu cục bộ của mình, rồi gửi cập nhật trọng số về server để tổng hợp (FedAvg) thành một mô hình chung — **không cần chia sẻ dữ liệu gốc**.
 
-Mục tiêu chính của dự án là minh họa cách hoạt động của Federated Learning trong môi trường phân tán, bao gồm:
+Hệ thống bao gồm:
 
-- Khởi động một server huấn luyện trung tâm
-- Chạy nhiều client độc lập
-- Theo dõi tiến trình huấn luyện qua log và biểu đồ
-- Lưu trữ session và kết quả submit của từng client
-- So sánh các session training trên giao diện web
-
-> Dự án hiện tại là một demo giáo dục/ứng dụng minh họa, không phải một hệ thống phát hiện mã độc chuyên nghiệp. Nếu dữ liệu đầu vào được thay bằng các mẫu liên quan đến malware/threat, hệ thống này có thể được mở rộng cho mục đích phân loại và phát hiện mẫu độc hại.
+- **Server huấn luyện trung tâm** (Flower, cổng 8080) tổng hợp mô hình bằng `FedAvg`.
+- **Nhiều client độc lập**, mỗi client có dữ liệu mã độc riêng.
+- **Backend API** (FastAPI, cổng 8000): điều khiển server/client qua WebSocket, stream log, lưu session và kết quả submit vào cơ sở dữ liệu.
+- **Giao diện web** (HTML/CSS/JS + Chart.js): điều khiển training, theo dõi log và biểu đồ accuracy theo từng round, so sánh các session.
 
 ## 2. Cấu trúc thư mục
 
-- backend/: chứa API FastAPI, server Flower, client Flower, cơ sở dữ liệu và logic huấn luyện
-- frontend/: giao diện web để điều khiển và theo dõi quá trình training
-- client1/, client2/, client3/, client4/: dữ liệu hình ảnh dùng cho từng client
+```
+IE207/
+├── backend/                # API FastAPI + server/client Flower + DB + logic train
+│   ├── backend.py          # FastAPI app (WebSocket, REST API)
+│   ├── start_backend.py    # Script khởi động backend (uvicorn)
+│   ├── server.py           # Flower server (FedAvg)
+│   ├── client.py           # Flower client
+│   ├── task.py             # Mô hình CNN + load dữ liệu + train/test
+│   ├── database.py         # Kết nối MySQL, tự fallback SQLite
+│   ├── models.py           # Bảng DB (SQLAlchemy)
+│   ├── crud.py             # Truy vấn DB
+│   ├── schemas.py          # Pydantic schema
+│   └── trained_models/     # Mô hình cuối được lưu sau khi train xong (tự tạo)
+├── frontend/               # Giao diện web
+│   ├── index.html
+│   ├── index.css
+│   └── index.js
+├── client1/ ... client4/   # Dữ liệu ảnh mã độc cho từng client (mỗi họ malware = 1 thư mục con)
+├── requirements.txt
+├── run_demo.sh             # Script chạy nhanh toàn bộ demo (Linux/macOS)
+└── README.md
+```
 
 ## 3. Yêu cầu hệ thống
 
-- Python 3.9 trở lên
-- pip
-- Git (tùy chọn)
+- **Python 3.9+** (đã kiểm thử trên Python 3.12)
+- **pip** và **venv** (xem mục 4 nếu máy chưa có)
 - Trình duyệt web hiện đại (Chrome, Edge, Firefox)
+- (Tùy chọn) MySQL — nếu không có, hệ thống tự dùng SQLite
 
 ## 4. Cài đặt môi trường Python
 
-### Bước 1: Tạo môi trường ảo
+> Trên một số bản Debian/Ubuntu, Python hệ thống **không có sẵn `pip` và `venv`**. Nếu lệnh `python3 -m venv` báo lỗi `ensurepip is not available` hoặc `No module named pip`, hãy làm theo mục 4.0 trước.
 
-Trên Windows:
+### 4.0. (Chỉ khi cần) Cài pip và venv
+
+Cách 1 — dùng apt (cần quyền sudo):
 
 ```bash
-cd D:\python\IE207\do_an\Federated_Learning
+sudo apt-get update
+sudo apt-get install -y python3-venv python3-pip
+```
+
+Cách 2 — không có quyền sudo (bootstrap vào thư mục người dùng):
+
+```bash
+curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+python3 /tmp/get-pip.py --user --break-system-packages
+python3 -m pip install --user --break-system-packages virtualenv
+```
+
+### 4.1. Tạo môi trường ảo
+
+**Linux / macOS:**
+
+```bash
+cd /home/doanpq/ie207ie/IE207
+python3 -m venv .venv        # hoặc: python3 -m virtualenv .venv (nếu dùng cách 2 ở trên)
+source .venv/bin/activate
+```
+
+**Windows (PowerShell):**
+
+```powershell
+cd <đường_dẫn>\IE207
 python -m venv .venv
 .venv\Scripts\activate
 ```
 
-### Bước 2: Cài đặt các package cần thiết
+### 4.2. Cài đặt các package
 
 ```bash
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## 5. Các package và thư viện cần thiết
+> **Lưu ý về PyTorch:** mặc định pip có thể tải bản GPU/CUDA rất nặng. Nếu máy **không có GPU NVIDIA** (hoặc muốn nhẹ và nhanh), hãy cài bản **CPU**:
+>
+> ```bash
+> pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+> pip install fastapi "uvicorn[standard]" sqlalchemy pymysql flwr requests pillow websockets
+> ```
 
-Dự án sử dụng các thư viện sau:
+## 5. Các package chính
 
-- fastapi
-- uvicorn
-- sqlalchemy
-- pymysql
-- flwr
-- torch
-- torchvision
-- requests
-- pillow
-
-Nếu bạn gặp lỗi khi cài torch/torchvision, hãy dùng bản phù hợp với hệ thống của bạn từ trang chính thức của PyTorch.
+| Package | Vai trò |
+|---|---|
+| `flwr` | Federated Learning framework |
+| `torch`, `torchvision` | Mô hình CNN, xử lý ảnh |
+| `fastapi`, `uvicorn` | Backend API + WebSocket |
+| `sqlalchemy`, `pymysql` | ORM + driver MySQL (fallback SQLite) |
+| `requests` | Client/server gọi API backend |
+| `pillow` | Đọc ảnh |
+| `websockets` | Hỗ trợ WebSocket cho uvicorn |
 
 ## 6. Chạy chương trình
 
-### Bước 1: Khởi động backend
+### Cách A — Chạy nhanh bằng script (Linux/macOS)
+
+Chạy toàn bộ demo (backend + server + 2 client) chỉ với 1 lệnh:
 
 ```bash
-cd backend
+cd /home/doanpq/ie207ie/IE207
+source .venv/bin/activate
+ROUNDS=2 SEED=42 ./run_demo.sh
+```
+
+Script tự bật backend → Flower server → 2 client, in log và lưu mô hình vào `backend/trained_models/`. Đổi `ROUNDS=10` để train nhiều vòng hơn.
+
+### Cách B — Chạy thủ công qua giao diện web
+
+**Bước 1 — Khởi động backend** (terminal 1):
+
+```bash
+cd /home/doanpq/ie207ie/IE207/backend
+source ../.venv/bin/activate
 python start_backend.py
 ```
 
-Backend sẽ chạy ở địa chỉ:
+Backend chạy tại `http://127.0.0.1:8000`. Giữ terminal này mở.
 
-- http://127.0.0.1:8000
+**Bước 2 — Mở giao diện web.** Khuyến nghị chạy một web server tĩnh (terminal 2) để tránh trình duyệt chặn file local:
 
-### Bước 2: Mở frontend
-
-Bạn có thể mở file:
-
-```text
-frontend/index.html
+```bash
+cd /home/doanpq/ie207ie/IE207/frontend
+python3 -m http.server 5500
 ```
 
-Nếu trình duyệt chặn việc load file local, hãy dùng một công cụ như VS Code Live Server hoặc một máy chủ tĩnh đơn giản.
+Rồi mở trình duyệt vào `http://localhost:5500`. (Có thể mở thẳng `frontend/index.html` nhưng nên dùng cách trên.)
+
+**Bước 3 — Điều khiển training trên web** (xem mục 7).
 
 ## 7. Hướng dẫn sử dụng giao diện
 
 ### Điều khiển huấn luyện
 
-- Nhấn Start Server để khởi động server
-- Chọn số vòng huấn luyện, số epoch, learning rate và seed
-- Nhấn Start Client 1/2/3/4 để chạy từng client
-- Nhấn View Client X để xem biểu đồ accuracy của client đó
+1. Nhập tham số: **Num Round**, **Local Epochs**, **Learning rate**, **Random seed**.
+2. Nhấn **Start Server** để khởi động Flower server.
+3. Nhấn **Start Client 1/2/3/4**. **Bắt buộc chạy ít nhất 2 client** vì server cấu hình `min_fit_clients = 2`; nếu chỉ có 1 client, training sẽ **không bắt đầu** mà chờ đủ client.
+4. Nhấn **View Client X** để xem biểu đồ accuracy của client đó theo từng round.
 
 ### Theo dõi log
 
-- Server Log: hiển thị log từ server
-- Client Log: hiển thị log từ từng client
+- **Server Log**: log từ Flower server.
+- **Client Log**: log riêng của từng client.
 
 ### So sánh session
 
-- Nhập các tham số ở Session A hoặc Session B
-- Nhấn Find để tìm session phù hợp
-- Chọn session và nhấn Active để xem biểu đồ so sánh
+- Nhập tham số ở **Session A** hoặc **Session B** → nhấn **Find** để tìm session phù hợp.
+- Chọn session trong danh sách rồi nhấn **Active** để xem biểu đồ so sánh.
 
 ### Đếm submit
 
-- Nhấn Count ở từng card client để xem tổng số submit và thời gian submit gần nhất
+- Nhấn **Count** ở từng card client để xem tổng số submit và thời gian submit gần nhất.
 
-## 8. Lưu ý quan trọng
+## 8. Cấu hình nâng cao (biến môi trường, tùy chọn)
 
-- Dự án có thể tự động dùng SQLite nếu MySQL không sẵn sàng.
-- Khi chạy backend, hãy đảm bảo thư mục dữ liệu client1/..../client4 nằm ở đúng vị trí tương đối với backend.
-- Nếu gặp lỗi "port already in use", hãy đóng tiến trình đang dùng cổng 8000 hoặc 8080.
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `HOST` / `PORT` | `127.0.0.1` / `8000` | Địa chỉ backend (đặt trước `start_backend.py`) |
+| `DB_BACKEND` | `mysql` | Mặc định dùng MySQL. Đặt `sqlite` để chạy tạm bằng SQLite |
+| `DB_USER` | `root` | User MySQL |
+| `DB_PASS` | *(rỗng)* | Mật khẩu MySQL |
+| `DB_HOST` / `DB_PORT` | `127.0.0.1` / `3306` | Địa chỉ MySQL server |
+| `DB_NAME` | `IE207` | Tên database (tự tạo nếu chưa có) |
+| `MODEL_DIR` | `backend/trained_models` | Thư mục lưu mô hình cuối |
 
-## 9. Khắc phục sự cố thường gặp
-
-### ModuleNotFoundError
+Ví dụ chạy backend trỏ tới MySQL với user/mật khẩu riêng:
 
 ```bash
+DB_USER=ie207 DB_PASS=ie207pass python start_backend.py
+```
+
+Ví dụ chạy tạm bằng SQLite (không cần MySQL):
+
+```bash
+DB_BACKEND=sqlite python start_backend.py
+```
+
+## 9. Lưu ý quan trọng
+
+- Hệ thống **mặc định dùng MySQL**. Database (`IE207`) sẽ được **tự động tạo nếu chưa tồn tại**; bạn chỉ cần đảm bảo MySQL server đang chạy và thông tin đăng nhập đúng (xem mục 8). Nếu không kết nối được, backend sẽ **báo lỗi rõ ràng và dừng** (không tự chuyển sang SQLite). Muốn chạy tạm không cần MySQL thì đặt `DB_BACKEND=sqlite`.
+- Đảm bảo các thư mục dữ liệu `client1/ ... client4/` nằm đúng vị trí (ngang cấp với `backend/`), vì `task.py` đọc theo đường dẫn tương đối `../client1`...
+- Các cảnh báo `DEPRECATED FEATURE` của Flower (`start_server`, `start_numpy_client`) là **bình thường** với phiên bản mới, chương trình vẫn chạy đúng.
+- Mô hình cuối được lưu tại `backend/trained_models/final_model_*.pth` sau round cuối.
+
+## 10. Khắc phục sự cố thường gặp
+
+### `ModuleNotFoundError`
+
+```bash
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### `ensurepip is not available` / `No module named pip`
+
+Xem mục **4.0** để cài `python3-venv` / `pip`.
+
+### Chữ tiếng Việt trên web bị lỗi (ví dụ `Quáº£n lÃ½`)
+
+Lỗi encoding do thiếu khai báo charset. File `frontend/index.html` đã có `<meta charset="UTF-8">`; chỉ cần tải lại trang (`Ctrl + Shift + R`).
+
 ### Port 8000 hoặc 8080 đang được dùng
 
-- Tắt tiến trình cũ
-- Hoặc đổi cổng trong cấu hình
+```bash
+# Linux/macOS
+lsof -t -i:8000 | xargs -r kill
+lsof -t -i:8080 | xargs -r kill
+```
+
+### Training không bắt đầu sau khi Start Server
+
+Kiểm tra đã **Start đủ ít nhất 2 client** chưa (yêu cầu `min_fit_clients = 2`).
 
 ### Không thấy giao diện cập nhật
 
-- Kiểm tra backend đã chạy chưa
-- Mở frontend sau khi backend đã sẵn sàng
+- Kiểm tra backend đã chạy chưa (`http://127.0.0.1:8000`).
+- Mở/refresh frontend **sau khi** backend đã sẵn sàng.
 
-## 10. Kết luận
+## 11. Kết luận
 
-Đây là một dự án demo về Federated Learning, giúp bạn hiểu cách nhiều client có thể huấn luyện một mô hình chung mà không cần chia sẻ dữ liệu gốc. Dự án có thể được mở rộng cho nhiều ứng dụng khác nhau, bao gồm phân loại dữ liệu, nhận diện mẫu hoặc các bài toán học máy phân tán khác.
+Đây là dự án demo Federated Learning ứng dụng vào **phát hiện mã độc**: nhiều client cùng huấn luyện một mô hình chung mà không chia sẻ dữ liệu gốc. Hệ thống có thể mở rộng cho các bài toán phân loại/nhận diện mẫu và học máy phân tán khác.

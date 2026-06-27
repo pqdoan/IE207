@@ -1,5 +1,6 @@
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -10,25 +11,41 @@ HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
 
 
-def find_pids_using_port(port: int):
-    try:
-        output = subprocess.check_output(["netstat", "-ano", "-p", "tcp"], text=True, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as exc:
-        output = exc.output
+IS_WINDOWS = os.name == "nt"
 
+
+def find_pids_using_port(port: int):
+    if IS_WINDOWS:
+        try:
+            output = subprocess.check_output(["netstat", "-ano", "-p", "tcp"], text=True, stderr=subprocess.STDOUT)
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            output = getattr(exc, "output", "") or ""
+
+        pids = []
+        for line in output.splitlines():
+            if f":{port}" in line and "LISTENING" in line:
+                match = re.search(r"\s+(\d+)\s*$", line)
+                if match:
+                    pids.append(int(match.group(1)))
+        return sorted(set(pids))
+
+    # Linux / macOS: dùng lsof nếu có
     pids = []
-    for line in output.splitlines():
-        if f":{port}" in line and "LISTENING" in line:
-            match = re.search(r"\s+(\d+)\s*$", line)
-            if match:
-                pids.append(int(match.group(1)))
+    try:
+        output = subprocess.check_output(["lsof", "-t", f"-i:{port}"], text=True, stderr=subprocess.DEVNULL)
+        pids = [int(p) for p in output.split()]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
     return sorted(set(pids))
 
 
 def kill_pids(pids):
     for pid in pids:
         try:
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            if IS_WINDOWS:
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            else:
+                os.kill(pid, signal.SIGKILL)
             print(f"Stopped process {pid}")
         except Exception as exc:
             print(f"Unable to stop process {pid}: {exc}")
